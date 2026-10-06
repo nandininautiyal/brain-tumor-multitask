@@ -1,0 +1,11 @@
+# data and generated artifacts - do NOT commit
+*.mat
+*.npz
+*.pt
+*.pth
+ckpt/
+working/
+outputs/ckpt/
+__pycache__/
+.ipynb_checkpoints/
+.DS_Store

@@ -1,0 +1,10 @@
+# Kaggle already ships all of these; this file is for running locally.
+torch>=2.1
+torchvision>=0.16
+numpy
+pandas
+scipy
+scikit-learn>=1.1
+h5py
+opencv-python-headless
+matplotlib
