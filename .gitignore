@@ -1,11 +1,23 @@
-# data and generated artifacts - do NOT commit
+# Dataset files
 *.mat
+
+# Cached/generated data
 *.npz
+working/
+
+# Model checkpoints / weights
 *.pt
 *.pth
 ckpt/
-working/
 outputs/ckpt/
+
+# Python
 __pycache__/
+*.py[cod]
+
+# Jupyter
 .ipynb_checkpoints/
+
+# OS
 .DS_Store
+Thumbs.db
