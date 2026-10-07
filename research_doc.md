@@ -155,11 +155,12 @@ Loss: `BCE + soft Dice` (segmentation) `+ 1.0 x CE` (classification). The mask u
 
 ```
 brain-tumor-multitask/
+├──results/
 ├── brain_tumor_multitask.ipynb   Kaggle notebook (all code)
 ├── brain_tumor_multitask.py      same code in jupytext percent format
-├── RESEARCH_LOG.md               this file
+├── research_doc.md               
 ├── README.md  requirements.txt  .gitignore
-└── outputs/ (generated)          results/*.json, results_long.csv, uncertainty_and_meta.csv, figs/*.png
+
 ```
 
 | Setting | Value |
