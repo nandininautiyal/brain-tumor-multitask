@@ -7,25 +7,24 @@
 - **Period:** October 2026 (pipeline built and debugged) · full experiment run: `[add date]`
 - **Dataset:** Figshare brain tumor dataset (Cheng et al.): 3,064 T1-CE slices, 233 patients, 3 tumor types, manual tumor masks
 - **Reference papers:** DeepSeg (Zeineldin et al., IJCARS 2020) · Khan et al. (CSBJ 2022) · Attention U-Net (Oktay et al., 2018)
-- **Repository:** `github.com/<your-username>/brain-tumor-multitask`
+- **Repository:** `github.com/nandininautiyal/brain-tumor-multitask`
 - **Status:** all 8 configurations completed on **fold 0 only**; 5-fold CV and multiple seeds still to do
 
 ## Table of Contents
-1. [Objective](#objective)
-2. [Prior-Work Claims vs. Our Results](#prior-work-claims-vs-our-results)
-3. [Source Audit and Reproduction Fidelity](#source-audit-and-reproduction-fidelity)
-4. [Git History](#git-history)
-5. [Phases](#phases)
-6. [Run-by-Run Results](#run-by-run-results)
-7. [Architecture](#architecture)
-8. [Codebase and Hyperparameters](#codebase-and-hyperparameters)
-9. [Key Learnings](#key-learnings)
-10. [Limitations and Next Steps](#limitations-and-next-steps)
-11. [Appendix: Consistency Audit of the Draft Paper](#appendix-consistency-audit-of-the-draft-paper)
+1. [Goals](#goals)
+2. [Published Claims vs. Our Findings](#published-claims-vs-our-findings)
+3. [Source Vetting and Replication Fidelity](#source-vetting-and-replication-fidelity)
+4. [Stages of Work](#stages-of-work)
+5. [Per-Run Results](#per-run-results)
+6. [Model Design](#model-design)
+7. [Code Layout and Training Settings](#code-layout-and-training-settings)
+8. [Main Takeaways](#main-takeaways)
+9. [Caveats and Future Work](#caveats-and-future-work)
+10. [Appendix: Cross-Check of the Draft Paper](#appendix-cross-check-of-the-draft-paper)
 
 ---
 
-## Objective
+## Goals
 
 Published brain-tumor classifiers on Figshare report 96-98% accuracy, but (a) the data ships as 2D slices and many pipelines shuffle slices before splitting, so slices from the same patient land in both train and test, and (b) almost none stress-test the model. The goal here:
 
@@ -35,7 +34,7 @@ Published brain-tumor classifiers on Figshare report 96-98% accuracy, but (a) th
 4. Measure calibration and whether MC-dropout uncertainty can flag misclassified or attacked inputs.
 5. Ablate attention gates and mask-guided classification; test fast-FGSM adversarial training.
 
-## Prior-Work Claims vs. Our Results
+## Published Claims vs. Our Findings
 
 | Quantity | Prior work | Ours | Comparable? |
 |---|---|---|---|
@@ -46,7 +45,7 @@ Published brain-tumor classifiers on Figshare report 96-98% accuracy, but (a) th
 
 Our dataset statistics match Khan et al.'s Table 2 exactly (708 meningioma / 1,426 glioma / 930 pituitary slices), and no patient carries more than one label.
 
-## Source Audit and Reproduction Fidelity
+## Source Vetting and Replication Fidelity
 
 **Retracted source excluded.** One of the three supplied PDFs ("U-Net-Based Medical Image Segmentation", Yin et al., J. Healthc. Eng. 2022) was **retracted by Hindawi in October 2023** after an investigation found indicators of systematic manipulation of the publication process, including peer-review manipulation and inappropriate citations. Its performance table also mixes incomparable datasets and metrics. It is **not cited**; U-Net, Attention U-Net and nnU-Net are cited from their original papers.
 
@@ -57,26 +56,15 @@ Our dataset statistics match Khan et al.'s Table 2 exactly (708 meningioma / 1,4
 
 **Protocol caveat.** All results come from one fold and one seed. The fold-0 patient-level test set has 645 slices from about 47 patients, so the effective sample size for classification is about 47, not 645.
 
-## Git History
+## Stages of Work
 
-> Fill from your repo: `git log --reverse --date=short --pretty=format:"%h  %ad  %s"`
-
-| Commit | Date | Message |
-|---|---|---|
-| `[hash]` | `[date]` | Initial notebook: loader, splits, multi-task U-Net |
-| `[hash]` | `[date]` | Fix: skip `cvind.mat` when listing slice files |
-| `[hash]` | `[date]` | Full fold-0 run, results and figures |
-| `[hash]` | `[date]` | Research log and paper draft |
-
-## Phases
-
-### Phase 0: Literature review and source audit
+### Stage 0: Literature Review and Source Vetting
 Read DeepSeg, Khan et al. and the supplied U-Net review. Found that the review was retracted (see above) and dropped it. Extracted three gaps shared by DeepSeg and Khan et al.: 2D slice protocols with no patient grouping, no robustness evaluation, no uncertainty or calibration analysis.
 
-### Phase 1: Choosing the contribution
+### Stage 1: Picking the Contribution
 Selected a single contribution at the intersection: a multi-task, leakage-free, robustness-aware benchmark rather than another accuracy-chasing architecture. Dataset choice: Figshare, because it ships **patient IDs, tumor masks and labels together**, which makes patient-level splitting, segmentation and classification possible in one dataset.
 
-### Phase 2: Pipeline implementation
+### Stage 2: Building the Pipeline
 Single Kaggle notebook. Key design decisions:
 - Whole dataset cached as float16 on the GPU (about 400 MB), no DataLoader.
 - `StratifiedGroupKFold` on patient ID for the patient protocol (plus a second grouped split for validation, with explicit no-overlap assertions); plain `StratifiedKFold` for the slice protocol; leakage fraction logged for every split.
@@ -84,21 +72,21 @@ Single Kaggle notebook. Key design decisions:
 - Perturbations: Gaussian noise, bias field, gamma; attacks: FGSM and PGD-10 against the joint loss in fp32; MC-dropout with T=10.
 - Finished runs write JSON and are skipped on re-run, so the experiment can be split across sessions.
 
-### Phase 3: Smoke test and debugging
+### Stage 3: Dry Run and Bug Fixing
 - Logic tested offline on synthetic `.mat` files (HDF5 v7.3 layout): patient-ID decoding, patient split (0% leakage), slice split (about 100% leakage), ECE/NLL, HD95.
 - **Bug found on real data:** the dataset folder contains **3,065** `.mat` files, not 3,064. The extra file is `cvind.mat` (the authors' cross-validation indices) and has no `cjdata` struct, causing `KeyError: 'cjdata'`. **Fix:** only load numerically named files (`1.mat`, `2.mat`, ...). We build our own patient-grouped folds, so `cvind.mat` is not needed.
 - Gotcha documented: smoke-test results in `outputs/results/` must be deleted before the full run, otherwise the resume logic skips the real runs.
 
-### Phase 4: Full experiment (fold 0)
+### Stage 4: Main Experiment (Fold 0)
 8 configurations x 14 evaluation conditions plus uncertainty analysis, about **130 minutes** on one Kaggle GPU. Outputs: per-run JSON, `results_long.csv`, `uncertainty_and_meta.csv`, figures, checkpoints.
 
-### Phase 5: Analysis
-Findings are summarised in [Key Learnings](#key-learnings). The most important result is not on the clean metrics (all saturated at 97-98.6% accuracy) but under attack and noise.
+### Stage 5: Results Analysis
+Findings are summarised in [Main Takeaways](#main-takeaways). The most important result is not on the clean metrics (all saturated at 97-98.6% accuracy) but under attack and noise.
 
-### Phase 6: Paper draft and consistency audit
-Drafted the paper, then cross-checked every quantitative claim against the result tables. Several statements in the draft do not match its own tables; see the [Appendix](#appendix-consistency-audit-of-the-draft-paper).
+### Stage 6: Paper Draft and Consistency Check
+Drafted the paper, then cross-checked every quantitative claim against the result tables. Several statements in the draft do not match its own tables; see the [Appendix](#appendix-cross-check-of-the-draft-paper).
 
-## Run-by-Run Results
+## Per-Run Results
 
 All runs: fold 0, one seed. Clean performance on the patient-level test set (645 slices, about 47 patients) unless the split says otherwise.
 
@@ -115,7 +103,7 @@ All runs: fold 0, one seed. Clean performance on the patient-level test set (645
 
 Split sizes (train / val / test slices): patient-level 2,106 / 313 / 645 (0% leakage); slice-level 2,144 / 307 / 613 (99.0% of test slices have their patient in training).
 
-### Robustness (accuracy / Dice)
+### Robustness Under Perturbation (accuracy / Dice)
 
 | Run | Clean | Noise σ=0.10 | FGSM-2 | PGD-2 | PGD-4 |
 |---|---|---|---|---|---|
@@ -130,7 +118,7 @@ Split sizes (train / val / test slices): patient-level 2,106 / 313 / 645 (0% lea
 
 Bias-field (0.2, 0.4) and gamma (0.7, 1.5) shifts changed accuracy by at most about 3 points for every model (lowest value 0.947, MobileNetV2 at gamma 0.7).
 
-### Calibration and uncertainty (MC-dropout, T=10)
+### Calibration and Uncertainty Estimates (MC-dropout, T=10)
 
 | Run | Clean ECE | Clean NLL | Adv. ECE | Adv. NLL | AUROC misclassification (cls. entropy) | AUROC attack (cls. entropy) | AUROC attack (seg. entropy) |
 |---|---|---|---|---|---|---|---|
@@ -144,7 +132,7 @@ Bias-field (0.2, 0.4) and gamma (0.7, 1.5) shifts changed accuracy by at most ab
 
 Encoder ranking by accuracy (1 = best): ResNet34 is 1, 2, 1, 1 at clean / PGD-1 / PGD-2 / PGD-4; DenseNet121 is 2, 1, 2, 2; MobileNetV2 is 3 throughout.
 
-## Architecture
+## Model Design
 
 ```mermaid
 flowchart LR
@@ -163,7 +151,7 @@ flowchart LR
 
 Loss: `BCE + soft Dice` (segmentation) `+ 1.0 x CE` (classification). The mask used for guidance is **detached**, so classification gradients never reach the segmentation head.
 
-## Codebase and Hyperparameters
+## Code Layout and Training Settings
 
 ```
 brain-tumor-multitask/
@@ -186,7 +174,7 @@ brain-tumor-multitask/
 | MC-dropout | T=10, decoder Dropout2d 0.2, classifier dropout 0.5 |
 | Splits | 5 folds, fold 0 reported; validation carved from train by a second grouped split |
 
-## Key Learnings
+## Main Takeaways
 
 1. **Clean accuracy on Figshare is saturated and uninformative.** Every model reaches 97.1-98.6% accuracy and Dice 0.754-0.805. Differences of a few tenths of a point equal a handful of slices out of 645.
 2. **The slice-level protocol did not inflate the headline numbers in this fold.** Slice-level accuracy was 97.7% versus 98.6% for patient-level, and Dice 0.805 versus 0.800. The two test sets are different slices (613 vs 645), so this comparison is unpaired and noisy. The valid conclusion is that the slice protocol is *invalid* (99% leakage), not that it measurably inflated accuracy here. Five folds are needed to say more.
@@ -199,7 +187,7 @@ brain-tumor-multitask/
 9. **Encoder ordering is stable across attack budgets** (ResNet34 and DenseNet121 trade first place; MobileNetV2 is always last). With three encoders, one fold and one seed, this is a hypothesis, not a result.
 10. **Attention and mask guidance effects are within noise.** Clean gains are 0.1-0.5 points, and the PGD differences among ResNet34 variants (for example 0.043 to 0.299 at PGD-4) come from single runs. They should not be reported as established until repeated over folds and seeds.
 
-## Limitations and Next Steps
+## Caveats and Future Work
 
 - [ ] Run all 5 folds and at least 3 seeds; report mean ± std.
 - [ ] Report patient-level metrics with cluster (patient) bootstrap confidence intervals, since slices are not independent.
@@ -211,7 +199,7 @@ brain-tumor-multitask/
 
 ---
 
-## Appendix: Consistency Audit of the Draft Paper
+## Appendix: Cross-Check of the Draft Paper
 
 Checked against the paper's own tables (Tables I-VI) and against Khan et al. These are statements to correct before submission; this appendix can be deleted from the public repo once fixed.
 
